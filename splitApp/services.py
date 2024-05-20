@@ -41,8 +41,6 @@ def check_balance(Cls, wallet):
         return result.strip()
 
 
-# services.py
-
 def calculate_expense_sharing_values(expense_sharing):
     # Check if split_with field has users
     if expense_sharing.split_with.exists():
