@@ -8,6 +8,7 @@ class BaseModel(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+
 class User(BaseModel):
     user_id = models.UUIDField(primary_key=True, default=uuid4, editable=False)
     username = models.CharField(max_length=255, unique=True)
@@ -55,12 +56,10 @@ class ExpenseSharing(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     def save(self, *args, **kwargs):
-        # If instance is new (i.e., it doesn't have a primary key yet), save without running the logic
         if not self.pk:
             super().save(*args, **kwargs)
             return
 
-        # Calculate the values for expense sharing
         if calculate_expense_sharing_values(self):
             self.apply_expense()
 
