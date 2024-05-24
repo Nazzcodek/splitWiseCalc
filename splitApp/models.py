@@ -1,7 +1,23 @@
 from django.db import models
 from uuid import uuid4
+from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, Group
 
 
+class UserManager(BaseUserManager):
+    def create_user(self, username, email=None, password=None, **extra_fields):
+        if not username:
+            raise ValueError('The Username field must be set')
+        email = self.normalize_email(email)
+        user = self.model(username=username, email=email, **extra_fields)
+        user.set_password(password)
+        user.save(using=self._db)
+        return user
+    
+    def create_superuser(self, username, email=None, password=None, **extra_fields):
+        # extra_fields.setdefault('is_staff', True)
+        # extra_fields.setdefault('is_superuser', True)
+        return self.create_user(username, email, password, **extra_fields)
+    
 class BaseModel(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -10,17 +26,23 @@ class BaseModel(models.Model):
         abstract = True
 
 
-class User(BaseModel):
-    user_id = models.UUIDField(primary_key=True, default=uuid4, editable=False)
+class User(AbstractBaseUser, BaseModel):
+    user_id = models.UUIDField(default=uuid4, editable=False)
     username = models.CharField(max_length=255, unique=True)
     email = models.EmailField(unique=True)
+    groups = models.ManyToManyField(Group)
+
+    USERNAME_FIELD = 'username'
+    REQUIRED_FIELDS = ['email', 'password']
+
+    objects = UserManager()
 
     def __str__(self):
         return self.username
 
 
 class Expense(BaseModel):
-    transaction_id = models.UUIDField(primary_key=True, default=uuid4, editable=False)
+    transaction_id = models.UUIDField(default=uuid4, editable=False)
     paid_by = models.ForeignKey(User, on_delete=models.CASCADE)
     title = models.CharField(max_length=255)
     description = models.TextField()
@@ -28,6 +50,11 @@ class Expense(BaseModel):
 
     def __str__(self):
         return f"{self.title} - {self.amount}"
+    
+    class Meta:
+        permissions = [
+            ("can_create_expense", "Can create expense"),
+        ]
 
 
 class UserWallet(BaseModel):

@@ -1,20 +1,16 @@
 """This is the service module for the splitWise app."""
-
-from .models import User, UserWallet, ExpenseSharing
+from .models import User, UserWallet
 from django.db import transaction
 
-def add_owed(wallet, user_id, amount):
-    user_id = str(user_id)
-    wallet.balances.setdefault(user_id, 0)
-    wallet.balances[user_id] += amount
+def update_balance(wallet, user_id, amount):
+    """Updates the balance of a user in the wallet."""
+    user_id = str(user_id) 
+    print(f'user_id: {user_id}')
+    wallet.balances.setdefault(user_id, 0)  
+    wallet.balances[user_id] += float(amount)
     if wallet.balances[user_id] == 0:
-        # Remove the user from the balances if the amount is 0
         del wallet.balances[user_id]
     wallet.save()
-
-
-def add_is_owed(wallet, user_id, amount):
-    add_owed(wallet, user_id, -amount)
 
 def check_balance(wallet):
     if not wallet.balances:
@@ -33,32 +29,33 @@ def check_balance(wallet):
         return result.strip()
 
 
-def calculate_expense_sharing_values(expense_sharing):
-    amount = expense_sharing.expense.amount
-    num_shares = expense_sharing.total_shares
+def calculate_expense_sharing_values(method, amount, values, total_shares):
+    # Convert values to floats
+    values = [float(value) for value in values]
 
-    if expense_sharing.method == "EQUAL":
-        return [round(amount / num_shares, 2)] * num_shares
-    elif expense_sharing.method == "EXACT":
-        if sum(expense_sharing.values) != amount:
+    if method == "EQUAL":
+        return [round(amount / total_shares, 2)] * total_shares
+    elif method == "EXACT":
+        if sum(values) != amount:
             raise ValueError("Total exact amounts must equal the total amount")
-        return expense_sharing.values
-    elif expense_sharing.method == "PERCENT":
-        total_percent = sum(expense_sharing.values)
+        return values
+    elif method == "PERCENT":
+        total_percent = sum(values)
         if total_percent != 100:
             raise ValueError("Total percentage must be 100")
-        return [round(percent / 100 * amount, 2) for percent in expense_sharing.values]
+        # Convert amount to float before performing multiplication
+        return [round(percent / 100 * float(amount), 2) for percent in values]
     else:
         raise ValueError("Invalid splitting method")
 
+
 # I'm using transaction for data consistency so balances are updated atomically
 @transaction.atomic  
-def apply_expense(expense_sharing):
-    shares = calculate_expense_sharing_values(expense_sharing)  
-
-    for i, user in enumerate(expense_sharing.split_with.all()):
+def apply_expense(expense_sharing, shares):
+    split_with_users = list(expense_sharing.split_with.all())
+    for i, user in enumerate(split_with_users):
         if user != expense_sharing.expense.paid_by:
             user_wallet, _ = UserWallet.objects.get_or_create(owner=user)
             payer_wallet, _ = UserWallet.objects.get_or_create(owner=expense_sharing.expense.paid_by)
-            user_wallet.update_balance(payer_wallet.owner_id, shares[i])
-            payer_wallet.update_balance(user_wallet.owner_id, -shares[i])
+            update_balance(user_wallet, payer_wallet.owner.id, shares[i])
+            update_balance(payer_wallet, user_wallet.owner.id, -shares[i])
