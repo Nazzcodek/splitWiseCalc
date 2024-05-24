@@ -24,7 +24,6 @@ def create_user(request):
     else:
         try:
             user = User.objects.create_user(username=username, email=email, password=password)
-            assign_create_expense_permission(user)
 
             # Return user data as JSON
             user_data = {
