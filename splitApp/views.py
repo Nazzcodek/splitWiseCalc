@@ -1,16 +1,28 @@
-from rest_framework.permissions import IsAuthenticated, AllowAny
-from rest_framework.decorators import api_view, permission_classes
-from django.contrib.auth import authenticate
-from rest_framework.decorators import api_view
-from rest_framework.response import Response
-from rest_framework import status
-from splitApp.services import *
-from datetime import datetime, timedelta
 import jwt
-from splitApp.models import Expense, ExpenseSharing, User
+from datetime import datetime, timedelta
 from decimal import Decimal
-from django.db import transaction
+
 from django.conf import settings as s
+from django.contrib.auth import authenticate
+from django.db import transaction
+from django.shortcuts import get_object_or_404
+
+from rest_framework import status, mixins, generics, permissions
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.generics import ListAPIView
+from rest_framework.permissions import IsAuthenticated, AllowAny
+from rest_framework.response import Response
+from rest_framework.views import APIView
+
+from splitApp.models import Expense, ExpenseSharing, User, UserWallet
+from splitApp.services import *
+from .services import calculate_expense_sharing_values
+from .serializers import ExpenseSerializer, ExpenseSharingSerializer
+
+
+
+# Create your views here.
+
 
 
 @api_view(['POST'])
@@ -61,53 +73,121 @@ def login_user(request):
     else:
         return Response(status=status.HTTP_401_UNAUTHORIZED)
 
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def create_expense(request):
-    if request.method == "POST":
-        title = request.data.get('title')
-        description = request.data.get('description')
-        amount = Decimal(request.data.get('amount'))
-        method = request.data.get('method')
 
-        # Get split_with usernames
-        split_with_usernames = request.data.get('split_with', [])
-        if not isinstance(split_with_usernames, list):
-            return Response({'error': 'split_with must be a list of usernames'}, status=status.HTTP_400_BAD_REQUEST)
+class CreateExpense(mixins.CreateModelMixin, generics.GenericAPIView):
+    serializer_class = ExpenseSerializer
+    permission_classes = [permissions.IsAuthenticated]
 
-        # Get User objects based on usernames
-        split_with_users = []
-        for username in split_with_usernames:
+    def post(self, request, *args, **kwargs):
+        data = request.data
+        data['paid_by'] = request.user.id
+        serializer = self.serializer_class(data=data)
+        if serializer.is_valid():
+            self.perform_create(serializer)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+
+
+class ListExpenses(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, pk=None):
+        user = request.user
+
+        if pk is not None:
             try:
-                split_with_users.append(User.objects.get(username=username))
-            except User.DoesNotExist:
-                return Response({'error': f'Invalid username: {username}'}, status=status.HTTP_400_BAD_REQUEST)
+                expense = Expense.objects.get(id=pk, paid_by=user)
+                serializer = ExpenseSerializer(expense)
+                return Response(serializer.data)
+            except Expense.DoesNotExist:
+                raise ValueError("Expense does not exist")
 
-        values = request.data.get('values', []) if method in ["EXACT", "PERCENT"] else []
-        total_shares = len(split_with_users)  # Only consider users in split_with
+        expenses = Expense.objects.filter(paid_by=user)
+        serializer = ExpenseSerializer(expenses, many=True)
+        return Response(serializer.data)
+
+
+    def put(self, request, pk=None):
+            user = request.user
+            if pk is not None:
+                try:
+                    expense = Expense.objects.get(id=pk, paid_by=user)
+                except Expense.DoesNotExist:
+                    return Response({"error": "Expense does not exist"}, status=status.HTTP_404_NOT_FOUND)
+
+                # Check if the expense has been shared
+                if ExpenseSharing.objects.filter(expense=expense).exists():
+                    return Response({"error": "Expense cannot be updated, it has already been shared"}, status=status.HTTP_400_BAD_REQUEST)
+
+                data = request.data
+                serializer = ExpenseSerializer(expense, data=data, partial=True)
+                if serializer.is_valid():
+                    serializer.save()
+                    return Response(serializer.data)
+                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+            return Response({"error": "Method not allowed"}, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+
+
+
+
+class ShareExpense(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        shared_expenses = ExpenseSharing.objects.filter(expense__paid_by = user)
+        serializer = ExpenseSharingSerializer(shared_expenses, many=True)
+        return Response (data=serializer.data, status=status.HTTP_200_OK)
+
+    def post(self, request):
+        user = request.user
+        data = request.data
 
         try:
-            shares = calculate_expense_sharing_values(method, amount, values, total_shares)
-        except ValueError as e:
-            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+            expense = Expense.objects.get(id=data['expense'], paid_by=user)
 
-        with transaction.atomic():
-            expense = Expense.objects.create(
-                paid_by=request.user,
-                title=title,
-                description=description,
-                amount=amount
-            )
-            expense_sharing = ExpenseSharing.objects.create(
-                expense=expense,
-                method=method,
-                total_shares=total_shares
-            )
-            expense_sharing.split_with.set(split_with_users)
+             # Check if the expense has already been shared
+            if ExpenseSharing.objects.filter(expense=expense).exists():
+                return ValueError('This expense has already been shared')
 
-            apply_expense(expense_sharing, shares)
+        except Expense.DoesNotExist:
+            return Response({"error": "Expense does not exist"}, status=status.HTTP_404_NOT_FOUND)
+        
 
-            expense_data = {
+        data['expense'] = expense.id  # Ensure expense is set correctly
+        split_with_users = data.get('split_with', [])
+        total_shares = len(split_with_users)
+
+        if not split_with_users:
+            return Response({"error": "split_with must be a non-empty list"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        data['total_shares'] = total_shares  # Set total shares based on split_with length
+
+        serializer = ExpenseSharingSerializer(data=data)
+        if serializer.is_valid():
+            method = serializer.validated_data['method']
+
+            # Calculate shares
+            values = request.data.get('values', []) if method in ["EXACT", "PERCENT"] else []
+            try:
+                shares = calculate_expense_sharing_values(method, expense.amount, values, total_shares)
+            except ValueError as e:
+                return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+            with transaction.atomic():
+                # Save the ExpenseSharing object
+                expense_sharing = serializer.save()
+
+                # Update total shares if it's null
+                if expense_sharing.total_shares is None:
+                    expense_sharing.total_shares = total_shares
+                    expense_sharing.save()
+
+                # Apply the expense sharing logic
+                apply_expense(expense_sharing, shares)
+                expense_data = {
                 'transaction_id': expense.transaction_id,
                 'paid_by': expense.paid_by.username,
                 'title': expense.title,
@@ -119,5 +199,47 @@ def create_expense(request):
 
             return Response(expense_data, status=status.HTTP_201_CREATED)
 
-    # If not POST, return an error
-    return Response({'error': 'Invalid request method.'}, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+
+class CheckWalletBalance(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user = request.user.id  # Assuming request.user is a User object
+
+        try:
+            # Retrieve the user's wallet
+            user_wallet = UserWallet.objects.get(owner__id=user)
+
+            # Get the wallet balance
+            wallet_balance = check_balance(user_wallet)
+            
+
+            return Response(data= wallet_balance, status=status.HTTP_200_OK)
+
+        except UserWallet.DoesNotExist:
+            # Handle case where user's wallet does not exist
+            return Response({'error': 'User wallet not found'}, status=status.HTTP_404_NOT_FOUND)
+
+
+
+
+
+
+# ADMIN VIEWS
+class AdminListExpenses(APIView):
+    serializer_class = ExpenseSerializer
+    # permission_classes = [permissions.IsAuthenticated, permissions.IsAdminUser]
+
+    def get(self, request, pk=None):
+        if pk is not None:
+            user = get_object_or_404(User, pk=pk)
+            expense = Expense.objects.filter(paid_by=user)
+            serializer = self.serializer_class(expense, many=True)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        else:
+            expenses = Expense.objects.all()
+            serializer = self.serializer_class(expenses, many=True)
+            return Response(serializer.data, status=status.HTTP_200_OK)

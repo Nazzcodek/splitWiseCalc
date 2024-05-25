@@ -1,6 +1,7 @@
 from django.db import models
 from uuid import uuid4
-from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, Group
+from django.contrib.auth.base_user import BaseUserManager
+from django.contrib.auth.models import AbstractBaseUser, Group
 
 
 class UserManager(BaseUserManager):
@@ -71,5 +72,7 @@ class ExpenseSharing(BaseModel):
         ('PERCENT', 'Percent')
     ])
     split_with = models.ManyToManyField(User, blank=True)
+
+    values = models.JSONField(default=list, null=True, blank=True)
     # Added total shares field
-    total_shares = models.PositiveIntegerField()
+    total_shares = models.PositiveIntegerField(null=True)

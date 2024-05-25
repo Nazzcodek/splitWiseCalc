@@ -16,17 +16,18 @@ def check_balance(wallet):
     if not wallet.balances:
         return "No balance"
     else:
-        result = ""
+        result = []
         for user_id, amount in wallet.balances.items():
-            debtor = User.objects.get(user_id=user_id)
+            debtor = User.objects.get(id = user_id)
             # Check if the user is owed to the wallet or owes to the wallet
             # user is debitor
             if amount > 0:
-                result += f"{wallet.owner.username} owes {debtor.username}: ${amount}\n"
+                result.append({debtor.username: f"{wallet.owner.username} owes {debtor.username} ${amount}"})
+            
             # user is creditor
             elif amount < 0:
-                result += f"{debtor.username} owes {wallet.owner.username}: ${-amount}\n"
-        return result.strip()
+                result.append(f"{debtor.username} owes {wallet.owner.username}: ${-amount} ")
+        return result
 
 
 def calculate_expense_sharing_values(method, amount, values, total_shares):
