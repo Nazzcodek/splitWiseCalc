@@ -1,6 +1,5 @@
 import jwt
 from datetime import datetime, timedelta
-from decimal import Decimal
 
 from django.conf import settings as s
 from django.contrib.auth import authenticate
@@ -9,8 +8,7 @@ from django.shortcuts import get_object_or_404
 
 from rest_framework import status, mixins, generics, permissions
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.generics import ListAPIView
-from rest_framework.permissions import IsAuthenticated, AllowAny
+from rest_framework.permissions import  AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -25,21 +23,23 @@ from .serializers import ExpenseSerializer, ExpenseSharingSerializer
 
 
 
-@api_view(['POST'])
-def create_user(request):
-    username = request.data.get('username')
-    email = request.data.get('email')
-    password = request.data.get('password')
+class CreateUserView(APIView):
+    permission_classes = [AllowAny]
 
-    if not username or not email or not password:
-        return Response({'error': 'All fields (username, email, password) are required.'}, status=status.HTTP_400_BAD_REQUEST)
-    else:
+    def post(self, request):
+        username = request.data.get('username')
+        email = request.data.get('email')
+        password = request.data.get('password')
+
+        if not username or not email or not password:
+            return Response({'error': 'All fields (username, email, password) are required.'}, status=status.HTTP_400_BAD_REQUEST)
+        
         try:
             user = User.objects.create_user(username=username, email=email, password=password)
 
             # Return user data as JSON
             user_data = {
-                'id': user.id, 
+                'user_id': user.user_id,  # Assuming 'user_id' is the field used for UUID
                 'username': user.username,
                 'email': user.email
             }
@@ -47,6 +47,7 @@ def create_user(request):
 
         except Exception as e:
             return Response({'error': f'An error occurred: {e}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 
 
 @api_view(['POST'])
@@ -204,7 +205,7 @@ class ShareExpense(APIView):
 
 
 class CheckWalletBalance(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
         user = request.user.id  # Assuming request.user is a User object
@@ -231,7 +232,7 @@ class CheckWalletBalance(APIView):
 # ADMIN VIEWS
 class AdminListExpenses(APIView):
     serializer_class = ExpenseSerializer
-    # permission_classes = [permissions.IsAuthenticated, permissions.IsAdminUser]
+    permission_classes = [permissions.IsAuthenticated, permissions.IsAdminUser]
 
     def get(self, request, pk=None):
         if pk is not None:

@@ -4,8 +4,8 @@ from .views import *
 urlpatterns = [
     
     #USER AUTHENTICATION
-    path('create_user/', create_user),
-    path('login_user/', login_user),
+    path('create_user/', CreateUserView.as_view(), name='create_user'),
+    path('login_user/', login_user, name='login_user'),
 
     path("create_expense/", CreateExpense.as_view(), name="create_expense"),
     path('expenses/', ListExpenses.as_view(), name='list-expenses'),

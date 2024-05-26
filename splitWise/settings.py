@@ -63,11 +63,16 @@ REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
         'splitApp.authentication.JWTAuthentication',
     ],
+    'DEFAULT_PERMISSION_CLASSES': [
+        'rest_framework.permissions.AllowAny',
+    ],
 }
 
 
 
 ROOT_URLCONF = 'splitWise.urls'
+
+AUTH_USER_MODEL = 'splitApp.User'
 
 TEMPLATES = [
     {
