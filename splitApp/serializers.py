@@ -25,3 +25,10 @@ class ExpenseSharingSerializer(serializers.ModelSerializer):
         fields = ['expense', 'method', 'split_with','total_shares']
 
 
+class UserWalletSerializer(serializers.Serializer):
+    wallet_owner = serializers.CharField()
+    debtor= serializers.CharField(required = False)
+    creditor = serializers.CharField(required = False)
+    amount = serializers.DecimalField(max_digits=10, decimal_places=2)
+    status = serializers.CharField()
+

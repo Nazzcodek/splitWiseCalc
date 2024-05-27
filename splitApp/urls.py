@@ -1,6 +1,10 @@
 from django.urls import path
 from .views import *
 
+
+
+
+
 urlpatterns = [
     
     #USER AUTHENTICATION
@@ -17,6 +21,8 @@ urlpatterns = [
     #ADMIN VIEWS
     path('admin/expenses/', AdminListExpenses.as_view(),name='admin-list-expenses'),
     path('admin/expenses/<int:pk>/', AdminListExpenses.as_view(),name='admin-detail-expense'),
+    path('admin/user_wallets/', AdminViewUserWallets.as_view(), name = 'admin_user_wallets'),
+    path('admin/user_wallets/<int:pk>/', AdminViewUserWallets.as_view(), name = 'admin_user_wallet_details')
 
 ]
 
