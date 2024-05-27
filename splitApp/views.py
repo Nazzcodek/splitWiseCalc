@@ -15,7 +15,7 @@ from rest_framework.views import APIView
 from splitApp.models import Expense, ExpenseSharing, User, UserWallet
 from splitApp.services import *
 from .services import calculate_expense_sharing_values
-from .serializers import ExpenseSerializer, ExpenseSharingSerializer
+from .serializers import ExpenseSerializer, ExpenseSharingSerializer,UserWalletSerializer
 
 
 
@@ -203,26 +203,46 @@ class ShareExpense(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
+from django.shortcuts import render
+from django.http import JsonResponse
+from .models import UserWallet
+
+def seewallet(request):
+    wallets = UserWallet.objects.all()
+    wallet_data = []
+
+    for wallet in wallets:
+        wallet_info = {
+            'owner': wallet.owner.username,
+            'balances': wallet.balances,
+            'created_at': wallet.created_at,
+            'updated_at': wallet.updated_at
+        }
+        wallet_data.append(wallet_info)
+
+    return JsonResponse(wallet_data, safe=False)
+
 
 class CheckWalletBalance(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
-        user = request.user.id  # Assuming request.user is a User object
+        user = request.user  # Assuming request.user is a User object
+        
 
         try:
             # Retrieve the user's wallet
-            user_wallet = UserWallet.objects.get(owner__id=user)
+            user_wallet = UserWallet.objects.get(owner=user)
 
             # Get the wallet balance
             wallet_balance = check_balance(user_wallet)
+            serializer = UserWalletSerializer(wallet_balance, many= True)
             
-
-            return Response(data= wallet_balance, status=status.HTTP_200_OK)
-
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        
         except UserWallet.DoesNotExist:
-            # Handle case where user's wallet does not exist
             return Response({'error': 'User wallet not found'}, status=status.HTTP_404_NOT_FOUND)
+
 
 
 
@@ -244,3 +264,38 @@ class AdminListExpenses(APIView):
             expenses = Expense.objects.all()
             serializer = self.serializer_class(expenses, many=True)
             return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+class AdminViewUserWallets(generics.ListAPIView):
+    permission_classes = [permissions.IsAuthenticated, permissions.IsAdminUser]
+    serializer_class = UserWalletSerializer
+
+
+    def get(self, request, pk=None, *args, **kwargs):
+        try:
+            if pk is not None:
+                # Retrieve the user's wallet
+                user_wallet = UserWallet.objects.get(owner=pk)
+
+                # Get the wallet balance
+                wallet_balance = check_balance(user_wallet)
+                serializer = UserWalletSerializer(wallet_balance, many=True)
+                return Response(serializer.data, status=status.HTTP_200_OK)
+
+           # Retrieve all user wallets
+            user_wallets = UserWallet.objects.all()
+            serialized_wallets = []
+            for wallet in user_wallets:
+                # Get the wallet balance
+                wallet_balance = check_balance(wallet)
+
+                # Serialize the wallet balance
+                serializer = UserWalletSerializer(data=wallet_balance, many=True)
+                if serializer.is_valid():
+                    serialized_wallets.append(serializer.data)
+                else:
+                    return Response(serializer.errors) 
+            return Response(data = serialized_wallets, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            return Response({'error': str(e)})

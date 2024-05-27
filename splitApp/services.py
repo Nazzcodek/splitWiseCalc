@@ -18,15 +18,25 @@ def check_balance(wallet):
     else:
         result = []
         for user_id, amount in wallet.balances.items():
-            debtor = User.objects.get(id = user_id)
+            user = User.objects.get(id = user_id)
             # Check if the user is owed to the wallet or owes to the wallet
             # user is debitor
+
+
             if amount > 0:
-                result.append({debtor.username: f"{wallet.owner.username} owes {debtor.username} ${amount}"})
-            
-            # user is creditor
+                result.append({
+                    'wallet_owner': wallet.owner.username,
+                    'creditor': user.username,
+                    'amount': amount,
+                    'status': f"{wallet.owner.username} owes {user.username} ${amount}"
+                })
             elif amount < 0:
-                result.append(f"{debtor.username} owes {wallet.owner.username}: ${-amount} ")
+                result.append({
+                    'debtor': user.username,
+                    'wallet_owner': wallet.owner.username,
+                    'amount': -amount,
+                    'status': f"{user.username} owes {wallet.owner.username}: ${-amount}"
+                })
         return result
 
 
