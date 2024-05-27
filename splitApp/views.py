@@ -203,24 +203,6 @@ class ShareExpense(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-from django.shortcuts import render
-from django.http import JsonResponse
-from .models import UserWallet
-
-def seewallet(request):
-    wallets = UserWallet.objects.all()
-    wallet_data = []
-
-    for wallet in wallets:
-        wallet_info = {
-            'owner': wallet.owner.username,
-            'balances': wallet.balances,
-            'created_at': wallet.created_at,
-            'updated_at': wallet.updated_at
-        }
-        wallet_data.append(wallet_info)
-
-    return JsonResponse(wallet_data, safe=False)
 
 
 class CheckWalletBalance(APIView):
