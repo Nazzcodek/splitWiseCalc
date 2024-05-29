@@ -12,7 +12,6 @@ User = get_user_model()
 def update_balance(wallet, user_id, amount):
     """Updates the balance of a user in the wallet."""
     user_id = str(user_id) 
-    print(f'user_id: {user_id}')
     wallet.balances.setdefault(user_id, 0)  
     wallet.balances[user_id] += float(amount)
     if wallet.balances[user_id] == 0:

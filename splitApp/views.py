@@ -287,7 +287,6 @@ class ShareExpense(
 
                 try:
                     expense = Expense.objects.get(id=data['expense'], paid_by=user)
-                    print('expense object = ', expense)
 
                     # Check if the expense has already been shared
                     if ExpenseSharing.objects.filter(expense=expense).exists():
@@ -335,7 +334,9 @@ class ShareExpense(
                             'description': expense.description,
                             'amount': expense.amount,
                             'split_with': [user.username for user in expense_sharing.split_with.all()],
-                            'shares': shares
+                            'shares': shares,
+                            'created_at': expense_sharing.created_at,
+                            'updated_at': expense_sharing.updated_at
                         }
 
                     return create_success_response(data=expense_data)
