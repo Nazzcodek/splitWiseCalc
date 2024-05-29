@@ -6,9 +6,6 @@ from UserApp.models import BaseModel
 User = get_user_model()
 
 
-
-
-
 class Expense(BaseModel):
     transaction_id = models.UUIDField(default=uuid4, editable=False)
     paid_by = models.ForeignKey(User, on_delete=models.CASCADE)
