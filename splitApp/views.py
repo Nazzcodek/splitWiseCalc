@@ -1,20 +1,13 @@
-import jwt
-from datetime import datetime, timedelta
-
-from django.conf import settings as s
-from django.contrib.auth import authenticate
 from django.db import transaction
 from django.shortcuts import get_object_or_404
 
 from rest_framework import status, mixins, generics, permissions
-from rest_framework.permissions import  AllowAny
 from rest_framework.response import Response
-from rest_framework.views import APIView
 
 from splitApp.models import Expense, ExpenseSharing, UserWallet
 from services.expense_services import *
 from services.response_services import *
-from .serializers import UserSerializer, ExpenseSerializer, ExpenseSharingSerializer,UserWalletSerializer
+from .serializers import ExpenseSerializer, ExpenseSharingSerializer,UserWalletSerializer
 
 
 # Imports for Swagger

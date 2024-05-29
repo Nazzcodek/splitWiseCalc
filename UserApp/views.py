@@ -86,7 +86,7 @@ class CreateUserView(APIView):
         password = request.data.get('password')
 
         if not username or not email or not password:
-            return Response({'error': 'All fields (username, email, password) are required.'}, status=status.HTTP_400_BAD_REQUEST)
+            return create_error_response('All fields (username, email, password) are required.')
         
         try:
             user = User.objects.create_user(username=username, email=email, password=password)
@@ -97,10 +97,10 @@ class CreateUserView(APIView):
                 'username': user.username,
                 'email': user.email
             }
-            return Response(user_data, status=status.HTTP_201_CREATED) 
+            return create_success_response(data = user_data) 
 
         except Exception as e:
-            return Response({'error': f'An error occurred: {e}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return create_error_response(str(e))
 
 
 
@@ -148,7 +148,7 @@ class LoginUserView(APIView):
                         'iat': datetime.utcnow()
                     }
                     token = jwt.encode(payload, s.SECRET_KEY, algorithm='HS256')
-                    response = create_success_response({'token': token})
+                    response = get_success_response(data={'token': token})
                     response.set_cookie(key='access_token', value=token, httponly=True)
                     return response
                 else:
