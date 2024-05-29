@@ -1,11 +1,17 @@
 """This is the service module for the splitWise app."""
-from .models import User, UserWallet
+from splitApp.models import UserWallet
 from django.db import transaction
+from django.contrib.auth import get_user_model
+
+User = get_user_model()
+
+
+
+
 
 def update_balance(wallet, user_id, amount):
     """Updates the balance of a user in the wallet."""
     user_id = str(user_id) 
-    print(f'user_id: {user_id}')
     wallet.balances.setdefault(user_id, 0)  
     wallet.balances[user_id] += float(amount)
     if wallet.balances[user_id] == 0:
@@ -18,6 +24,7 @@ def check_balance(wallet):
     else:
         result = []
         for user_id, amount in wallet.balances.items():
+            amount = round(amount,2)
             user = User.objects.get(id = user_id)
             # Check if the user is owed to the wallet or owes to the wallet
             # user is debitor

@@ -40,9 +40,11 @@ INSTALLED_APPS = [
     
     # my apps
     'splitApp',
+    'UserApp',
 
     'rest_framework',
     'rest_framework.authtoken', 
+    'drf_yasg',
 ]
 
 MIDDLEWARE = [
@@ -64,7 +66,7 @@ REST_FRAMEWORK = {
         'splitApp.authentication.JWTAuthentication',
     ],
     'DEFAULT_PERMISSION_CLASSES': [
-        'rest_framework.permissions.AllowAny',
+        'rest_framework.permissions.IsAuthenticated',
     ],
 }
 
@@ -72,7 +74,7 @@ REST_FRAMEWORK = {
 
 ROOT_URLCONF = 'splitWise.urls'
 
-AUTH_USER_MODEL = 'splitApp.User'
+AUTH_USER_MODEL = 'UserApp.User'
 
 TEMPLATES = [
     {
