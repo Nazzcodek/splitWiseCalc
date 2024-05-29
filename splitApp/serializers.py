@@ -9,6 +9,7 @@ class UserSerializer(serializers.Serializer):
     username = serializers.CharField(max_length=255)
     password = serializers.CharField(max_length=255)
 
+
 class ExpenseSerializer(serializers.ModelSerializer):
     class Meta:
         model = Expense
@@ -22,14 +23,12 @@ class ExpenseSharingSerializer(serializers.ModelSerializer):
         exclude = ['paid_by']
 
 
-
 class ExpenseSharingSerializer(serializers.ModelSerializer):
     expense = serializers.PrimaryKeyRelatedField(queryset=Expense.objects.all())
     split_with = serializers.PrimaryKeyRelatedField(queryset=User.objects.all(), many=True)
     total_shares = serializers.ReadOnlyField()
     created_at = serializers.ReadOnlyField()
     updated_at = serializers.ReadOnlyField()
-
 
     class Meta:
         model = ExpenseSharing
