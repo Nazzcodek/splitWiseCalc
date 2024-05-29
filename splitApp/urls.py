@@ -2,12 +2,7 @@ from django.urls import path
 from .views import *
 
 
-
-
-
 urlpatterns = [
-    
-
     path('expenses/', ExpenseAPIView.as_view(), name='list-expenses'),
     path('expenses/<int:pk>/', ExpenseAPIView.as_view(), name='expense-details'),
     path('expenses/share/', ShareExpense.as_view(), name='share-expense'),
