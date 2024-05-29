@@ -7,15 +7,27 @@ from django.db import transaction
 from django.shortcuts import get_object_or_404
 
 from rest_framework import status, mixins, generics, permissions
-from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import  AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from splitApp.models import Expense, ExpenseSharing, User, UserWallet
-from splitApp.services import *
-from .services import calculate_expense_sharing_values
-from .serializers import ExpenseSerializer, ExpenseSharingSerializer,UserWalletSerializer
+from splitApp.models import Expense, ExpenseSharing, UserWallet
+from services.expense_services import *
+from services.response_services import *
+from .serializers import UserSerializer, ExpenseSerializer, ExpenseSharingSerializer,UserWalletSerializer
+
+
+# Imports for Swagger
+from drf_yasg.utils import swagger_auto_schema
+from drf_yasg import openapi
+
+from django.contrib.auth import get_user_model
+
+User = get_user_model()
+
+
+
+
 
 
 
@@ -23,196 +35,350 @@ from .serializers import ExpenseSerializer, ExpenseSharingSerializer,UserWalletS
 
 
 
-class CreateUserView(APIView):
-    permission_classes = [AllowAny]
-
-    def post(self, request):
-        username = request.data.get('username')
-        email = request.data.get('email')
-        password = request.data.get('password')
-
-        if not username or not email or not password:
-            return Response({'error': 'All fields (username, email, password) are required.'}, status=status.HTTP_400_BAD_REQUEST)
-        
-        try:
-            user = User.objects.create_user(username=username, email=email, password=password)
-
-            # Return user data as JSON
-            user_data = {
-                'user_id': user.user_id,  # Assuming 'user_id' is the field used for UUID
-                'username': user.username,
-                'email': user.email
-            }
-            return Response(user_data, status=status.HTTP_201_CREATED) 
-
-        except Exception as e:
-            return Response({'error': f'An error occurred: {e}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-
-
-@api_view(['POST'])
-@permission_classes([AllowAny])
-def login_user(request):
-    username = request.data.get("username")
-    password = request.data.get("password")
-
-    user = authenticate(request, username=username, password=password)
-    if user is not None:
-        user_id = str(user.user_id)
-        payload = {
-            'user_id': user_id,
-            'exp': datetime.utcnow() + timedelta(minutes=60),
-            'iat': datetime.utcnow()
-        }
-
-        token = jwt.encode(payload, s.SECRET_KEY, algorithm='HS256')
-
-        # Set the token in an HttpOnly cookie
-        response = Response({'token': token}, status=status.HTTP_200_OK)
-        response.set_cookie(key='access_token', value=token, httponly=True)
-        return response
-    else:
-        return Response(status=status.HTTP_401_UNAUTHORIZED)
-
-
-class CreateExpense(mixins.CreateModelMixin, generics.GenericAPIView):
+class ExpenseAPIView(
+    mixins.ListModelMixin,
+    mixins.CreateModelMixin,
+    mixins.RetrieveModelMixin,
+    mixins.UpdateModelMixin,
+    generics.GenericAPIView
+):
+    queryset = Expense.objects.all()
     serializer_class = ExpenseSerializer
     permission_classes = [permissions.IsAuthenticated]
 
-    def post(self, request, *args, **kwargs):
-        data = request.data
-        data['paid_by'] = request.user.id
-        serializer = self.serializer_class(data=data)
-        if serializer.is_valid():
-            self.perform_create(serializer)
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
     
+    @swagger_auto_schema(
+        operation_description="Create a new expense",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            required=['title', 'description', 'amount'],
+            properties={
+                'title': openapi.Schema(type=openapi.TYPE_STRING, description='Title of the expense'),
+                'description': openapi.Schema(type=openapi.TYPE_STRING, description='Description of the expense'),
+                'amount': openapi.Schema(type=openapi.TYPE_NUMBER, format='float', description='Amount of the expense')
+            },
+        ),
+        responses={
+            201: openapi.Response(
+                description="Expense created successfully",
+                examples={
+                    "application/json": {
+                        "transaction_id": "UUID",
+                        "paid_by": "user_id",
+                        "title": "Expense Title",
+                        "description": "Expense Description",
+                        "amount": 100.00,
+                        "created_at": "timestamp",
+                        "updated_at": "timestamp"
+                    }
+                }
+            ),
+            400: openapi.Response(
+                description="Bad Request",
+                examples={
+                    "application/json": {
+                        "error": "Detailed error message"
+                    }
+                }
+            ),
+        },
+    )
+    def post(self, request, *args, **kwargs):
+        try:
+            data  = request.data
+            data['paid_by'] = request.user.id
+            serializer = ExpenseSerializer(data=data)
+            if serializer.is_valid():
+                serializer.save()
+                return create_success_response(data=serializer.data)
+            return create_error_response(serializer.errors)
+        except Exception as e:
+            return create_error_response(str(e))
 
-
-class ListExpenses(APIView):
-    permission_classes = [permissions.IsAuthenticated]
-
-    def get(self, request, pk=None):
-        user = request.user
-
-        if pk is not None:
-            try:
-                expense = Expense.objects.get(id=pk, paid_by=user)
-                serializer = ExpenseSerializer(expense)
-                return Response(serializer.data)
-            except Expense.DoesNotExist:
-                raise ValueError("Expense does not exist")
-
-        expenses = Expense.objects.filter(paid_by=user)
-        serializer = ExpenseSerializer(expenses, many=True)
-        return Response(serializer.data)
-
-
-    def put(self, request, pk=None):
-            user = request.user
+    @swagger_auto_schema(
+        operation_description="Retrieve a list of expenses",
+        responses={
+            200: openapi.Response(
+                description="List of expenses",
+                examples={
+                    "application/json": [
+                        {
+                            "transaction_id": "UUID",
+                            "paid_by": "user_id",
+                            "title": "Expense Title",
+                            "description": "Expense Description",
+                            "amount": 100.00,
+                            "created_at": "timestamp",
+                            "updated_at": "timestamp"
+                        }
+                    ]
+                }
+            ),
+        },
+    )
+    def get(self, request, *args, **kwargs):
+        try:
+            pk = kwargs.get('pk')
             if pk is not None:
-                try:
-                    expense = Expense.objects.get(id=pk, paid_by=user)
-                except Expense.DoesNotExist:
-                    return Response({"error": "Expense does not exist"}, status=status.HTTP_404_NOT_FOUND)
+                return self.retrieve(request, *args, **kwargs)  # Retrieve a specific object
+            else:
+                return self.list(request, *args, **kwargs)  # List all objects
+        except Exception as e:
+            return create_error_response(str(e))
 
-                # Check if the expense has been shared
-                if ExpenseSharing.objects.filter(expense=expense).exists():
-                    return Response({"error": "Expense cannot be updated, it has already been shared"}, status=status.HTTP_400_BAD_REQUEST)
-
-                data = request.data
-                serializer = ExpenseSerializer(expense, data=data, partial=True)
-                if serializer.is_valid():
-                    serializer.save()
-                    return Response(serializer.data)
-                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-            return Response({"error": "Method not allowed"}, status=status.HTTP_405_METHOD_NOT_ALLOWED)
-
-
-
-
-class ShareExpense(APIView):
-    permission_classes = [permissions.IsAuthenticated]
-
-    def get(self, request):
-        user = request.user
-        shared_expenses = ExpenseSharing.objects.filter(expense__paid_by = user)
-        serializer = ExpenseSharingSerializer(shared_expenses, many=True)
-        return Response (data=serializer.data, status=status.HTTP_200_OK)
-
-    def post(self, request):
-        user = request.user
-        data = request.data
-
+    @swagger_auto_schema(
+        operation_description="Update an existing expense",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'title': openapi.Schema(type=openapi.TYPE_STRING, description='Title of the expense'),
+                'description': openapi.Schema(type=openapi.TYPE_STRING, description='Description of the expense'),
+                'amount': openapi.Schema(type=openapi.TYPE_NUMBER, format='float', description='Amount of the expense')
+            },
+        ),
+        responses={
+            200: openapi.Response(
+                description="Expense updated successfully",
+                examples={
+                    "application/json": {
+                        "transaction_id": "UUID",
+                        "paid_by": "user_id",
+                        "title": "Expense Title",
+                        "description": "Expense Description",
+                        "amount": 100.00,
+                        "created_at": "timestamp",
+                        "updated_at": "timestamp"
+                    }
+                }
+            ),
+            400: openapi.Response(
+                description="Bad Request",
+                examples={
+                    "application/json": {
+                        "error": "Expense cannot be updated, it has already been shared"
+                    }
+                }
+            ),
+            404: openapi.Response(
+                description="Expense not found",
+                examples={
+                    "application/json": {
+                        "error": "Expense does not exist"
+                    }
+                }
+            ),
+            405: openapi.Response(
+                description="Method not allowed",
+                examples={
+                    "application/json": {
+                        "error": "Method not allowed"
+                    }
+                }
+            ),
+        },
+    )
+    def put(self, request, *args, **kwargs):
         try:
-            expense = Expense.objects.get(id=data['expense'], paid_by=user)
-
-             # Check if the expense has already been shared
-            if ExpenseSharing.objects.filter(expense=expense).exists():
-                return ValueError('This expense has already been shared')
-
+            expense_id = kwargs.get('pk')
+            expense = Expense.objects.get(pk=expense_id, paid_by=request.user)
+            data = request.data
+            data['paid_by'] = request.user.id
+            serializer = ExpenseSerializer(expense, data=data, partial=False)
+            if serializer.is_valid():
+                serializer.save()
+                return create_success_response(data=serializer.data)
+            return create_error_response(serializer.errors)
         except Expense.DoesNotExist:
-            return Response({"error": "Expense does not exist"}, status=status.HTTP_404_NOT_FOUND)
-        
-
-        data['expense'] = expense.id  # Ensure expense is set correctly
-        split_with_users = data.get('split_with', [])
-        total_shares = len(split_with_users)
-
-        if not split_with_users:
-            return Response({"error": "split_with must be a non-empty list"}, status=status.HTTP_400_BAD_REQUEST)
-        
-        data['total_shares'] = total_shares  # Set total shares based on split_with length
-
-        serializer = ExpenseSharingSerializer(data=data)
-        if serializer.is_valid():
-            method = serializer.validated_data['method']
-
-            # Calculate shares
-            values = request.data.get('values', []) if method in ["EXACT", "PERCENT"] else []
-            try:
-                shares = calculate_expense_sharing_values(method, expense.amount, values, total_shares)
-            except ValueError as e:
-                return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
-
-            with transaction.atomic():
-                # Save the ExpenseSharing object
-                expense_sharing = serializer.save()
-
-                # Update total shares if it's null
-                if expense_sharing.total_shares is None:
-                    expense_sharing.total_shares = total_shares
-                    expense_sharing.save()
-
-                # Apply the expense sharing logic
-                apply_expense(expense_sharing, shares)
-                expense_data = {
-                'transaction_id': expense.transaction_id,
-                'paid_by': expense.paid_by.username,
-                'title': expense.title,
-                'description': expense.description,
-                'amount': expense.amount,
-                'split_with': [user.username for user in expense_sharing.split_with.all()],
-                'shares': shares
-            }
-
-            return Response(expense_data, status=status.HTTP_201_CREATED)
-
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            return not_found_response(error_message='Not found')
+        except Exception as e:
+            return create_error_response(str(e))
 
 
 
-
-class CheckWalletBalance(APIView):
+class ShareExpense(    
+    mixins.ListModelMixin,
+    mixins.CreateModelMixin,
+    generics.GenericAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
+
+    @swagger_auto_schema(
+        operation_description="Retrieve all shared expenses for the authenticated user",
+        responses={
+            200: openapi.Response(
+                description="List of shared expenses",
+                examples={
+                    "application/json": [
+                        {
+                            "id": "UUID",
+                            "expense": "expense_id",
+                            "method": "EQUAL",
+                            "split_with": ["user1", "user2"],
+                            "values": [],
+                            "total_shares": 2,
+                            "created_at": "timestamp",
+                            "updated_at": "timestamp"
+                        }
+                    ]
+                }
+            ),
+        },
+    )
     def get(self, request):
-        user = request.user  # Assuming request.user is a User object
-        
+        try:
+            user = request.user
+            shared_expenses = ExpenseSharing.objects.filter(expense__paid_by = user)
+            serializer = ExpenseSharingSerializer(shared_expenses, many=True)
+            return get_success_response(data=serializer.data)
+        except Exception as e:
+            return create_error_response(str(e))
+
+
+    @swagger_auto_schema(
+        operation_description="Share an expense with other users",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'expense': openapi.Schema(type=openapi.TYPE_STRING, description='ID of the expense to be shared'),
+                'method': openapi.Schema(type=openapi.TYPE_STRING, description='Method of sharing (EQUAL, EXACT, PERCENT)'),
+                'split_with': openapi.Schema(type=openapi.TYPE_ARRAY, items=openapi.Items(type=openapi.TYPE_STRING), description='List of user IDs to split the expense with'),
+                'values': openapi.Schema(type=openapi.TYPE_ARRAY, items=openapi.Items(type=openapi.TYPE_NUMBER), description='Values for EXACT or PERCENT method'),
+            },
+            required=['expense', 'method', 'split_with']
+        ),
+        responses={
+            201: openapi.Response(
+                description="Expense shared successfully",
+                examples={
+                    "application/json": {
+                        "transaction_id": "UUID",
+                        "paid_by": "username",
+                        "title": "Expense Title",
+                        "description": "Expense Description",
+                        "amount": 100.00,
+                        "split_with": ["user1", "user2"],
+                        "shares": [50.00, 50.00]
+                    }
+                }
+            ),
+            400: openapi.Response(
+                description="Bad Request",
+                examples={
+                    "application/json": {
+                        "error": "split_with must be a non-empty list"
+                    }
+                }
+            ),
+            404: openapi.Response(
+                description="Expense not found",
+                examples={
+                    "application/json": {
+                        "error": "Expense does not exist"
+                    }
+                }
+            ),
+        },
+    )
+    def post(self, request):
+            try:
+                user = request.user
+                data = request.data
+
+                try:
+                    expense = Expense.objects.get(id=data['expense'], paid_by=user)
+                    print('expense object = ', expense)
+
+                    # Check if the expense has already been shared
+                    if ExpenseSharing.objects.filter(expense=expense).exists():
+                        return create_error_response('This expense has already been shared')
+
+                except Expense.DoesNotExist:
+                    return not_found_response(error_message='Not found')
+
+                split_with_users = data.get('split_with', [])
+                total_shares = len(split_with_users)
+
+                if not split_with_users:
+                    return create_error_response('No users to split with')
+                
+                data['expense'] = expense.id  # Ensure expense is set correctly
+                data['total_shares'] = total_shares  # Set total shares based on split_with length
+
+                serializer = ExpenseSharingSerializer(data=data)
+                if serializer.is_valid():
+                    method = serializer.validated_data['method']
+
+                    # Calculate shares
+                    values = request.data.get('values', []) if method in ["EXACT", "PERCENT"] else []
+                    try:
+                        shares = calculate_expense_sharing_values(method, expense.amount, values, total_shares)
+                    except ValueError as e:
+                        return create_error_response( str(e))
+
+                    with transaction.atomic():
+                        # Save the ExpenseSharing object
+                        expense_sharing = serializer.save()
+
+                        # Update total shares if it's null
+                        if expense_sharing.total_shares is None:
+                            expense_sharing.total_shares = total_shares
+                            expense_sharing.save()
+
+                        # Apply the expense sharing logic
+                        apply_expense(expense_sharing, shares)
+                        
+                        expense_data = {
+                            'transaction_id': expense.transaction_id,
+                            'paid_by': expense.paid_by.username,
+                            'title': expense.title,
+                            'description': expense.description,
+                            'amount': expense.amount,
+                            'split_with': [user.username for user in expense_sharing.split_with.all()],
+                            'shares': shares
+                        }
+
+                    return create_success_response(data=expense_data)
+
+                return create_error_response(serializer.errors)
+
+            except Exception as e:
+                return create_error_response( str(e))
+
+
+
+
+class CheckWalletBalance(generics.ListAPIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    @swagger_auto_schema(
+        operation_description="Retrieve the balance of the authenticated user's wallet",
+        responses={
+            200: openapi.Response(
+                description="User's wallet balance",
+                examples={
+                    "application/json": {
+                        "balances": [
+                            {"currency": "USD", "balance": 100.00},
+                            {"currency": "EUR", "balance": 50.00}
+                        ]
+                    }
+                }
+            ),
+            404: openapi.Response(
+                description="User wallet not found",
+                examples={
+                    "application/json": {
+                        "error": "User wallet not found"
+                    }
+                }
+            )
+        },
+    )
+    def get(self, request):
 
         try:
+            user = request.user  # Assuming request.user is a User object
             # Retrieve the user's wallet
             user_wallet = UserWallet.objects.get(owner=user)
 
@@ -220,10 +386,10 @@ class CheckWalletBalance(APIView):
             wallet_balance = check_balance(user_wallet)
             serializer = UserWalletSerializer(wallet_balance, many= True)
             
-            return Response(serializer.data, status=status.HTTP_200_OK)
+            return get_success_response(data=serializer.data)
         
-        except UserWallet.DoesNotExist:
-            return Response({'error': 'User wallet not found'}, status=status.HTTP_404_NOT_FOUND)
+        except UserWallet.DoesNotExist as e:
+            return create_error_response(str(e))
 
 
 
@@ -232,29 +398,92 @@ class CheckWalletBalance(APIView):
 
 
 # ADMIN VIEWS
-class AdminListExpenses(APIView):
+class AdminListExpenses(generics.ListAPIView):
     serializer_class = ExpenseSerializer
     permission_classes = [permissions.IsAuthenticated, permissions.IsAdminUser]
 
-    def get(self, request, pk=None):
-        if pk is not None:
-            user = get_object_or_404(User, pk=pk)
-            expense = Expense.objects.filter(paid_by=user)
-            serializer = self.serializer_class(expense, many=True)
-            return Response(serializer.data, status=status.HTTP_200_OK)
-        else:
-            expenses = Expense.objects.all()
-            serializer = self.serializer_class(expenses, many=True)
-            return Response(serializer.data, status=status.HTTP_200_OK)
 
+
+    @swagger_auto_schema(
+        operation_description="List all expenses for the authenticated admin user",
+        responses={
+            200: openapi.Response(
+                description="List of expenses",
+                examples={
+                    "application/json": [
+                        {
+                            "transaction_id": "12345678-1234-5678-1234-567812345678",
+                            "paid_by": "admin",
+                            "title": "Expense 1",
+                            "description": "Description of Expense 1",
+                            "amount": 100.00
+                        },
+                        {
+                            "transaction_id": "87654321-1234-5678-1234-567812345678",
+                            "paid_by": "admin",
+                            "title": "Expense 2",
+                            "description": "Description of Expense 2",
+                            "amount": 200.00
+                        }
+                    ]
+                }
+            )
+        },
+    )
+    def get(self, request, pk=None):
+        try:
+            if not request.user.is_staff:  # Check if the user is not an admin
+                return forbidden_response('You do not have permission to perform this action.')
+            
+            if pk is not None:
+                user = get_object_or_404(User, pk=pk)
+                expense = Expense.objects.filter(paid_by=user)
+                serializer = self.serializer_class(expense, many=True)
+                return get_success_response(data=serializer.data)
+            else:
+                expenses = Expense.objects.all()
+                serializer = self.serializer_class(expenses, many=True)
+                return get_success_response(data=serializer.data)
+        except Exception as e:
+            return create_error_response(str(e))
 
 class AdminViewUserWallets(generics.ListAPIView):
     permission_classes = [permissions.IsAuthenticated, permissions.IsAdminUser]
     serializer_class = UserWalletSerializer
 
 
+
+    @swagger_auto_schema(
+        operation_description="List all user wallets for the authenticated admin user",
+        responses={
+            200: openapi.Response(
+                description="List of user wallets",
+                examples={
+                    "application/json": [
+                        {
+                            "owner": "user1",
+                            "balances": {
+                                "USD": 100.0,
+                                "EUR": 50.0
+                            }
+                        },
+                        {
+                            "owner": "user2",
+                            "balances": {
+                                "USD": 150.0,
+                                "EUR": 75.0
+                            }
+                        }
+                    ]
+                }
+            )
+        },
+    )
     def get(self, request, pk=None, *args, **kwargs):
         try:
+            if not request.user.is_staff:  # Check if the user is not an admin
+                return forbidden_response('You do not have permission to perform this action.')
+        
             if pk is not None:
                 # Retrieve the user's wallet
                 user_wallet = UserWallet.objects.get(owner=pk)
@@ -262,8 +491,7 @@ class AdminViewUserWallets(generics.ListAPIView):
                 # Get the wallet balance
                 wallet_balance = check_balance(user_wallet)
                 serializer = UserWalletSerializer(wallet_balance, many=True)
-                return Response(serializer.data, status=status.HTTP_200_OK)
-
+                return get_success_response(data=serializer.data)
            # Retrieve all user wallets
             user_wallets = UserWallet.objects.all()
             serialized_wallets = []
@@ -276,8 +504,8 @@ class AdminViewUserWallets(generics.ListAPIView):
                 if serializer.is_valid():
                     serialized_wallets.append(serializer.data)
                 else:
-                    return Response(serializer.errors) 
-            return Response(data = serialized_wallets, status=status.HTTP_200_OK)
+                    return create_error_response(serializer.errors) 
+            return get_success_response(data = serialized_wallets)
 
         except Exception as e:
             return Response({'error': str(e)})

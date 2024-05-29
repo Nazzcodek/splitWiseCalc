@@ -6,65 +6,12 @@ from rest_framework import status
 from rest_framework.test import APITestCase
 from rest_framework import status
 from django.contrib.auth import get_user_model
-from .models import Expense
+from .models import Expense, ExpenseSharing
+from services.expense_services import *
 import uuid
 
 
 User = get_user_model()
-
-class CreateUserViewTestCase(TestCase):
-    def setUp(self):
-        self.client = APIClient()
-
-    def test_create_user_valid_data(self):
-        data = {
-            'username': 'testuser',
-            'email': 'test@example.com',
-            'password': 'testpassword'
-        }
-        response = self.client.post('/api/create_user/', data)
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-
-    def test_create_user_missing_fields(self):
-        data = {
-            'username': 'testuser',
-            # Missing email and password
-        }
-        response = self.client.post('/api/create_user/', data)
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn('error', response.data)
-
-
-
-
-
-
-class LoginUserViewTestCase(APITestCase):
-    def setUp(self):
-        self.client = APIClient()
-        # Create a user
-        self.user = User.objects.create_user(username='testuser', email='test@example.com', password='testpassword')
-
-    def test_login_valid_credentials(self):
-            data = {
-                'username': 'testuser',
-                'password': 'testpassword'
-            }
-            
-            response = self.client.post('/api/login_user/', data, format='json')
-            print(response)
-            self.assertEqual(response.status_code, status.HTTP_200_OK)
-            self.assertIn('token', response.data)  # Verify that the response contains a 'token' key
-            self.assertTrue(response.data['token'])  # Verify that the token is not empty
-            
-        
-    def test_login_invalid_credentials(self):
-            data = {
-                'username': 'testuser',
-                'password': 'wrongpassword'
-            }
-            response = self.client.post('/api/login_user/', data, format='json')
-            self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
 
 class TestCreateExpenseView(APITestCase):
@@ -157,6 +104,54 @@ class ListExpensesViewTestCase(APITestCase):
         response = self.client.get(f'/api/expenses/{expense_id}/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Add assertions for the response data
+
+
+
+
+
+
+
+
+class TestCalculateExpenseSharingValues(TestCase):
+    def test_equal_sharing(self):
+        method = 'EQUAL'
+        amount = 100.00
+        values = []
+        total_shares = 2
+        expected_shares = [50.00, 50.00]
+
+        shares = calculate_expense_sharing_values(method, amount, values, total_shares)
+        self.assertEqual(shares, expected_shares)
+
+    def test_exact_sharing(self):
+        method = 'EXACT'
+        amount = 100.00
+        values = [40.00, 60.00]
+        total_shares = 2
+        expected_shares = [40.00, 60.00]
+
+        shares = calculate_expense_sharing_values(method, amount, values, total_shares)
+        self.assertEqual(shares, expected_shares)
+
+    def test_percent_sharing(self):
+        method = 'PERCENT'
+        amount = 100.00
+        values = [40, 60]
+        total_shares = 2
+        expected_shares = [40.00, 60.00]
+
+        shares = calculate_expense_sharing_values(method, amount, values, total_shares)
+        self.assertEqual(shares, expected_shares)
+
+    def test_invalid_method(self):
+        method = 'INVALID'
+        amount = 100.00
+        values = []
+        total_shares = 2
+
+        with self.assertRaises(ValueError):
+            calculate_expense_sharing_values(method, amount, values, total_shares)
+
 
 
 
