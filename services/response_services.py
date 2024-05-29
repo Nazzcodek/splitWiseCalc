@@ -2,8 +2,6 @@ from rest_framework import status
 from rest_framework.response import Response
 
 
-
-
 def get_success_response(data=None):
     return Response(data, status=status.HTTP_200_OK)
 
