@@ -6,9 +6,6 @@ from django.contrib.auth import get_user_model
 User = get_user_model()
 
 
-
-
-
 def update_balance(wallet, user_id, amount):
     """Updates the balance of a user in the wallet."""
     user_id = str(user_id) 
@@ -17,6 +14,7 @@ def update_balance(wallet, user_id, amount):
     if wallet.balances[user_id] == 0:
         del wallet.balances[user_id]
     wallet.save()
+
 
 def check_balance(wallet):
     if not wallet.balances:
