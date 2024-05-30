@@ -84,10 +84,3 @@ SplitWiseCalc is a Django REST API project designed to manage expenses and share
 - **PyJWT**: JSON Web Token implementation for Python.
 - **Django-filter**: Filtering support for Django REST framework.
 
-## Contributing
-
-Contributions are welcome! Please open an issue to discuss proposed changes or submit a pull request directly.
-
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
