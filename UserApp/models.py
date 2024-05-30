@@ -3,9 +3,6 @@ from django.contrib.auth.base_user import BaseUserManager
 from django.contrib.auth.models import AbstractUser
 from uuid import uuid4
 
-
-
-
         
 class BaseModel(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
@@ -38,8 +35,6 @@ class UserManager(BaseUserManager):
          # Create a new superuser
         return self.create_user(username, email, password, **extra_fields)
     
-
-
 
 class User(AbstractUser, BaseModel):
     user_id = models.UUIDField(default=uuid4, editable=False)
